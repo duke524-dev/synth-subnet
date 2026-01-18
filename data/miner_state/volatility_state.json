@@ -1,0 +1,10 @@
+{
+  "BTC": {
+    "asset": "BTC",
+    "sigma2_1m": 4.700000007053928e-06,
+    "last_close_1m": 95044.172,
+    "last_update_ts": "2026-01-18T07:51:24.356707+00:00",
+    "lambda_val": 0.94,
+    "state_version": 1
+  }
+}

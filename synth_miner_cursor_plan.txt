@@ -1,0 +1,183 @@
+
+COMPLETED CURSOR PLAN: SYNTH MINER + OFFLINE CRPS TUNING
+=======================================================
+
+This document is a step-by-step, Cursor-friendly build plan for a Synth miner.
+It emphasizes stability, validator-faithful scoring, and offline CRPS tuning.
+(Project directory layout intentionally excluded.)
+
+-------------------------------------------------------
+PHASE 1 — Correct Miner Response (Validator Safety)
+-------------------------------------------------------
+
+1) Implement request handler (forward)
+- Parse: assets[], start_time, time_increment, time_horizon, num_simulations
+- Compute steps = time_horizon / time_increment
+- Always respond BEFORE start_time
+- Build response in exact Synth schema
+
+Acceptance:
+- Correct fields
+- All assets included
+- Response time < start_time
+
+2) Local response validation (self-guard)
+- len(price_paths) == num_simulations
+- len(price_paths[i]) == steps + 1
+- prices: finite, > 0, not zero, not NaN
+- path[0] exists
+Fail fast locally if invalid.
+
+3) Spot price fetch (Pyth close)
+- Use Pyth Benchmarks TradingView shim
+- Fetch latest 1-minute close at or before t0
+- Short TTL cache
+
+-------------------------------------------------------
+PHASE 2 — Online Volatility State (The Runtime Model)
+-------------------------------------------------------
+
+4) EWMA sigma^2 state (1-minute)
+Per asset maintain:
+- sigma2_1m
+- last_close_1m
+- last_update_ts
+
+Update rule:
+sigma2 = lambda * sigma2 + (1 - lambda) * r^2
+
+5) Cold start bootstrap
+- Fetch recent 1m data:
+  * Crypto: 6 hours
+  * XAU: 12 hours
+  * Equities: 1–2 trading days
+- Initialize sigma2_1m = mean(r^2) with floor
+- Persist immediately
+
+6) Persistence
+- Save state every N minutes
+- Reload on restart
+- Never reset unless manual
+
+-------------------------------------------------------
+PHASE 3 — Path Generator (Validator-Aware)
+-------------------------------------------------------
+
+7) Deterministic Path 0
+- Flat price (smooth, stable)
+- Used for gap scoring
+
+8) Stochastic paths 1..999 (vectorized)
+- Crypto/XAU: Student-t
+- Equities: Gaussian or high-df Student-t
+- Z shape: (999, steps)
+- R = sigma_step * Z
+- price = price * exp(cumsum(R))
+
+9) Volatility per step + caps
+- sigma_1m = sqrt(sigma2_1m)
+- sigma_step = sigma_1m * sqrt(step_minutes)
+- HIGH prompt: apply shrink_high
+- Apply sigma_cap_daily guardrail
+
+10) Equity overnight flattening (LOW prompt)
+- If market closed:
+  * sigma very small
+  * paths nearly flat
+- Approximate NYSE hours initially
+
+-------------------------------------------------------
+PHASE 4 — Default Parameters (No Early Tuning)
+-------------------------------------------------------
+
+11) Lock conservative defaults
+- Set lambda, df, sigma_cap_daily, shrink_high per asset class
+- Do NOT tune yet
+
+-------------------------------------------------------
+PHASE 5 — Prediction Logging (Disk-Efficient)
+-------------------------------------------------------
+
+12) Sampling strategy
+Save predictions only when:
+- LOW: every 30 minutes
+- HIGH: every 15 minutes
+- Volatility spike (rate-limited)
+- Equity open/close windows
+
+Store:
+- t0, asset, prompt, step, horizon
+- model version + parameter hash
+- full price_paths
+
+-------------------------------------------------------
+PHASE 6 — Offline CRPS Replay (Golden Oracle)
+-------------------------------------------------------
+
+13) Copy validator CRPS code VERBATIM
+- crps_calculation.py
+- helpers it calls
+- prompt interval definitions
+Add header: DO NOT MODIFY
+
+14) Offline replay loop
+For each saved prediction:
+1. Load price_paths
+2. Fetch realized prices from Pyth
+3. Align to exact grid
+4. Call copied validator CRPS code
+5. Store CRPS results + metadata
+
+15) Diagnostics (outside CRPS code)
+- 5% / 50% / 95% coverage
+- CRPS by horizon bucket:
+  * short (1–5m)
+  * medium (15–60m)
+  * long (3h / abs)
+- Rolling averages
+
+-------------------------------------------------------
+PHASE 7 — Parameter Governance (Slow & Safe)
+-------------------------------------------------------
+
+16) Monthly tuning routine
+Rules:
+- One parameter per asset per month
+- Small changes only
+- Respect bounds per asset class
+
+Examples:
+- Short-horizon CRPS bad -> lambda -= 0.01
+- 95% misses too often -> df -= 1
+- sigma_cap: quarterly only if abs CRPS consistently wrong
+
+-------------------------------------------------------
+PHASE 8 — Hardening & Regression Safety
+-------------------------------------------------------
+
+17) Regression tests
+- Response shape validation
+- No NaN / zero / negative prices
+- Offline CRPS test against fixed data
+- path[0] determinism
+
+-------------------------------------------------------
+BUILD ORDER (DO NOT CHANGE)
+-------------------------------------------------------
+
+1) Miner response + local validation
+2) Pyth spot fetch
+3) EWMA state + persistence
+4) Vectorized path generation
+5) LOW/HIGH adapters + equity flatten
+6) Prediction sampling logger
+7) Copy validator CRPS code
+8) Offline replay + diagnostics
+9) Monthly governance (later)
+
+-------------------------------------------------------
+CORE PRINCIPLE
+-------------------------------------------------------
+
+Live miner stays simple and stable.
+All intelligence happens OFFLINE using validator code EXACTLY.
