@@ -23,8 +23,12 @@ import bittensor as bt
 
 # import base miner class which takes care of most of the boilerplate
 from synth.base.miner import BaseMinerNeuron
-from synth.miner.simulations import generate_simulations
 from synth.protocol import Simulation
+
+# New imports for complete miner functionality
+from synth.miner.request_handler import handle_request
+from synth.miner.state_persistence import reload_all_states
+from synth.miner.automated_tuning import get_scheduler
 
 
 class Miner(BaseMinerNeuron):
@@ -38,22 +42,45 @@ class Miner(BaseMinerNeuron):
 
     def __init__(self, config=None):
         super(Miner, self).__init__(config=config)
+        
+        # Reload persisted volatility state on startup
+        reload_all_states()
+        
+        # Start automated CRPS replay and tuning scheduler
+        # Runs CRPS replay daily, diagnostics weekly
+        scheduler = get_scheduler(
+            crps_replay_interval_hours=24,  # Daily CRPS replay
+            diagnostics_interval_hours=168,  # Weekly diagnostics
+            tuning_check_interval_hours=168,  # Weekly tuning check
+            crps_replay_days=7,  # Last 7 days of predictions
+            enabled=True,  # Set to False to disable automation
+            # Configurable thresholds (only suggest tuning if CRPS > these)
+            good_crps_threshold=50.0,
+            high_short_crps_threshold=100.0,
+            high_long_crps_threshold=200.0,
+            coverage_low_threshold=0.93,
+            coverage_high_threshold=0.97,
+            min_data_points=10,
+        )
+        scheduler.start()
+        bt.logging.info("Automated tuning scheduler started")
 
     async def forward_miner(self, synapse: Simulation) -> Simulation:
+        """Use new complete handler (Steps 1-11) with automated prediction logging."""
         simulation_input = synapse.simulation_input
         bt.logging.info(
             f"Received prediction request from: {synapse.dendrite.hotkey} for timestamp: {simulation_input.start_time}"
         )
-
-        synapse.simulation_output = generate_simulations(
-            asset=simulation_input.asset,
-            start_time=simulation_input.start_time,
-            time_increment=simulation_input.time_increment,
-            time_length=simulation_input.time_length,
-            num_simulations=simulation_input.num_simulations,
-            sigma=self.config.simulation.sigma,  # Standard deviation of the simulated price path
-        )
-
+        
+        # Use complete handler (Steps 1-11) - handles EWMA, path generation, validation, logging
+        response_tuple, error = await handle_request(synapse)
+        
+        if error:
+            bt.logging.error(f"Request failed: {error}")
+            synapse.simulation_output = None
+        else:
+            synapse.simulation_output = response_tuple
+        
         return synapse
 
     async def blacklist(self, synapse: Simulation) -> typing.Tuple[bool, str]:
