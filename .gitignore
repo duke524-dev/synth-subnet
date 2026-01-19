@@ -250,3 +250,6 @@ validator.*local.config.js
 
 # GCP
 google-credentials.json
+
+#data log
+data/predictions

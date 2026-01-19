@@ -209,12 +209,13 @@ class Miner(BaseMinerNeuron):
             self.wallet.hotkey.ss58_address
         )
 
+        trust_value = metagraph.validator_trust[self.uid] if hasattr(metagraph, 'validator_trust') else 0.0
         log = (
             "Miner | "
             f"Step:{self.step} | "
             f"UID:{self.uid} | "
             f"Stake:{metagraph.S[self.uid]} | "
-            f"Trust:{metagraph.T[self.uid]:.4f} | "
+            f"Trust:{trust_value:.4f} | "
             f"Incentive:{metagraph.I[self.uid]:.4f} | "
             f"Emission:{metagraph.E[self.uid]:.4f}"
         )
