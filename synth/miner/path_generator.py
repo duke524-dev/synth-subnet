@@ -25,7 +25,16 @@ DEFAULT_DF = {
 
 
 def get_student_t_df(asset: str) -> float:
-    """Get Student-t degrees of freedom for asset."""
+    """Get Student-t degrees of freedom for asset, checking tuning history first."""
+    # Check if parameter was tuned (from governance)
+    from synth.miner.parameter_governance import get_governance
+    governance = get_governance()
+    tuned_value = governance.get_current_parameter_value(asset, "df")
+    
+    # If tuned value exists, use it; otherwise use default
+    if tuned_value is not None:
+        return tuned_value
+    
     return DEFAULT_DF.get(asset, 5.0)  # Default df=5
 
 

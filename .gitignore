@@ -255,3 +255,5 @@ google-credentials.json
 data/predictions
 #state log
 data/miner_state
+
+*.jsonl

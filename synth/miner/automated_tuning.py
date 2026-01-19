@@ -35,6 +35,8 @@ class AutomatedTuningScheduler:
         tuning_check_interval_hours: int = 168,  # Weekly
         crps_replay_days: int = 7,
         enabled: bool = True,
+        # Auto-apply flag
+        auto_apply_tuning: bool = False,  # Set to True to enable automatic application
         # Configurable thresholds
         good_crps_threshold: float = 50.0,
         high_short_crps_threshold: float = 100.0,
@@ -48,6 +50,7 @@ class AutomatedTuningScheduler:
         self.tuning_check_interval_hours = tuning_check_interval_hours
         self.crps_replay_days = crps_replay_days
         self.enabled = enabled
+        self.auto_apply_tuning = auto_apply_tuning
         
         # Store thresholds
         self.good_crps_threshold = good_crps_threshold
@@ -232,6 +235,10 @@ class AutomatedTuningScheduler:
                     bt.logging.warning(f"  ⚠️  Tuning suggestions: {len(suggestions)} found")
                     for sug in suggestions[:3]:  # Show first 3
                         bt.logging.warning(f"    - {sug}")
+                    
+                    # Automatically apply suggestions if enabled
+                    if self.auto_apply_tuning:
+                        self._apply_tuning_suggestions(suggestions)
             else:
                 bt.logging.info("No CRPS results found for diagnostics")
         
@@ -268,6 +275,92 @@ class AutomatedTuningScheduler:
         
         except Exception as e:
             bt.logging.error(f"Parameter tuning eligibility check failed: {e}", exc_info=True)
+    
+    def _apply_tuning_suggestions(self, suggestions):
+        """
+        Automatically apply tuning suggestions if eligible.
+        
+        Only applies suggestions that:
+        1. Pass eligibility checks
+        2. Are within bounds
+        3. Respect step size limits
+        """
+        from typing import List, Dict, Any
+        
+        applied_count = 0
+        skipped_count = 0
+        
+        bt.logging.info("Attempting to automatically apply tuning suggestions...")
+        
+        for suggestion in suggestions:
+            asset = suggestion.get("asset", "ALL")
+            parameter = suggestion.get("parameter")
+            change = suggestion.get("change", 0)
+            reason = suggestion.get("reason", "Automated tuning")
+            
+            # Handle "ALL" assets - apply to all supported assets
+            if asset == "ALL":
+                assets = ["BTC", "ETH", "SOL", "XAU"]
+            else:
+                assets = [asset]
+            
+            for target_asset in assets:
+                # Check eligibility
+                eligible, eligibility_reason = self.governance.is_tuning_eligible(
+                    target_asset, parameter
+                )
+                
+                if not eligible:
+                    bt.logging.debug(
+                        f"Skipping {target_asset}/{parameter}: {eligibility_reason}"
+                    )
+                    skipped_count += 1
+                    continue
+                
+                # Get current value
+                current_value = self.governance.get_current_parameter_value(
+                    target_asset, parameter
+                )
+                
+                if current_value is None:
+                    bt.logging.warning(
+                        f"Cannot get current value for {target_asset}/{parameter}"
+                    )
+                    skipped_count += 1
+                    continue
+                
+                # Calculate new value
+                new_value = current_value + change
+                
+                # Propose change (this validates bounds and step size)
+                success, msg = self.governance.propose_parameter_change(
+                    asset=target_asset,
+                    parameter_name=parameter,
+                    new_value=new_value,
+                    reason=f"Auto: {reason}",
+                )
+                
+                if success:
+                    bt.logging.info(
+                        f"✅ Auto-applied: {target_asset}/{parameter} "
+                        f"{current_value:.4f} -> {new_value:.4f} ({reason})"
+                    )
+                    applied_count += 1
+                else:
+                    bt.logging.warning(
+                        f"❌ Auto-apply failed for {target_asset}/{parameter}: {msg}"
+                    )
+                    skipped_count += 1
+        
+        bt.logging.info(
+            f"Auto-tuning complete: {applied_count} applied, {skipped_count} skipped"
+        )
+        
+        if applied_count > 0:
+            bt.logging.warning(
+                "⚠️  Parameter changes have been recorded. "
+                "Miner will use new values on next request (no restart needed)."
+            )
 
 
 # Global scheduler instance
@@ -280,6 +373,7 @@ def get_scheduler(
     tuning_check_interval_hours: int = 168,
     crps_replay_days: int = 7,
     enabled: bool = True,
+    auto_apply_tuning: bool = False,  # Set to True to enable automatic parameter updates
     good_crps_threshold: float = 50.0,
     high_short_crps_threshold: float = 100.0,
     high_long_crps_threshold: float = 200.0,
@@ -296,6 +390,7 @@ def get_scheduler(
             tuning_check_interval_hours=tuning_check_interval_hours,
             crps_replay_days=crps_replay_days,
             enabled=enabled,
+            auto_apply_tuning=auto_apply_tuning,
             good_crps_threshold=good_crps_threshold,
             high_short_crps_threshold=high_short_crps_threshold,
             high_long_crps_threshold=high_long_crps_threshold,

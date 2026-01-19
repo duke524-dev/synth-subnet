@@ -71,8 +71,8 @@ def convert_to_step_volatility(
     # Convert to step volatility
     sigma_step = sigma_1m * math.sqrt(step_minutes)
     
-    # Apply daily cap
-    sigma_cap_daily = SIGMA_CAP_DAILY.get(asset, 0.10)  # Default 10%
+    # Apply daily cap (check tuning history first)
+    sigma_cap_daily = get_sigma_cap_daily(asset)
     
     # Convert daily cap to step cap
     # Daily has 1440 minutes
@@ -96,8 +96,17 @@ def convert_to_step_volatility(
 
 
 def get_sigma_cap_daily(asset: str) -> float:
-    """Get daily volatility cap for asset."""
-    return SIGMA_CAP_DAILY.get(asset, 0.10)
+    """Get sigma cap daily for asset, checking tuning history first."""
+    # Check if parameter was tuned (from governance)
+    from synth.miner.parameter_governance import get_governance
+    governance = get_governance()
+    tuned_value = governance.get_current_parameter_value(asset, "sigma_cap_daily")
+    
+    # If tuned value exists, use it; otherwise use default
+    if tuned_value is not None:
+        return tuned_value
+    
+    return SIGMA_CAP_DAILY.get(asset, 0.10)  # Default 10%
 
 
 def get_shrink_high(asset: str) -> float:

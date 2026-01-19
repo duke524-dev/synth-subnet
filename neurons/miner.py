@@ -29,6 +29,7 @@ from synth.protocol import Simulation
 from synth.miner.request_handler import handle_request
 from synth.miner.state_persistence import reload_all_states
 from synth.miner.automated_tuning import get_scheduler
+from synth.miner.volatility_updater import get_volatility_updater
 
 
 class Miner(BaseMinerNeuron):
@@ -54,6 +55,7 @@ class Miner(BaseMinerNeuron):
             tuning_check_interval_hours=168,  # Weekly tuning check
             crps_replay_days=7,  # Last 7 days of predictions
             enabled=True,  # Set to False to disable automation
+            auto_apply_tuning=True,  # Set to True to enable automatic parameter updates
             # Configurable thresholds (only suggest tuning if CRPS > these)
             good_crps_threshold=50.0,
             high_short_crps_threshold=100.0,
@@ -64,6 +66,20 @@ class Miner(BaseMinerNeuron):
         )
         scheduler.start()
         bt.logging.info("Automated tuning scheduler started")
+        
+        # Optional: Start background volatility updater for 1-minute EWMA tracking
+        # This provides more accurate volatility estimates than request-triggered updates
+        # Set to True to enable automatic 1-minute volatility state updates
+        ENABLE_BACKGROUND_UPDATER = False  # Set to True to enable
+        
+        if ENABLE_BACKGROUND_UPDATER:
+            updater = get_volatility_updater(update_interval_seconds=60)
+            updater.start()
+            bt.logging.info("Background volatility updater started (1-minute intervals)")
+        else:
+            bt.logging.info(
+                "Background volatility updater disabled - using request-triggered updates"
+            )
 
     async def forward_miner(self, synapse: Simulation) -> Simulation:
         """Use new complete handler (Steps 1-11) with automated prediction logging."""

@@ -169,9 +169,21 @@ async def handle_request(synapse: Simulation) -> Tuple[Optional[tuple], Optional
         price_paths = generate_dummy_paths(start_price, steps, num_simulations)
     else:
         # Step 5: Update EWMA state with current price
-        # (This simulates getting new 1-minute close)
+        # Use the fetched start_price as a proxy for 1-minute close
+        # Note: This is an approximation - ideally we'd fetch true 1-minute closes
+        # but Pyth API limitations make this challenging
         current_time = datetime.now(timezone.utc)
-        manager.update_state(asset, start_price, current_time)
+        
+        # Only update if we have a valid state and price
+        if start_price > 0:
+            manager.update_state(asset, start_price, current_time)
+            bt.logging.debug(
+                f"Updated volatility state for {asset} using start_price={start_price:.2f}"
+            )
+        else:
+            bt.logging.warning(
+                f"Skipping volatility update for {asset}: invalid start_price={start_price}"
+            )
         
         # Get sigma2_1m
         sigma2_1m = manager.get_sigma2_1m(asset)
@@ -259,11 +271,16 @@ async def handle_request(synapse: Simulation) -> Tuple[Optional[tuple], Optional
         # Get current config snapshot for logging
         manager = get_volatility_manager()
         state = manager.get_state(asset)
+        
+        # Import parameter getters to get actual values (including tuned values)
+        from synth.miner.path_generator import get_student_t_df
+        from synth.miner.volatility_scaling import get_sigma_cap_daily, get_shrink_high
+        
         config_snapshot = {
             'lambda': state.lambda_val if state else None,
-            'df': None,  # Will be extracted from path_generator defaults
-            'sigma_cap_daily': None,  # Will be extracted from volatility_scaling defaults
-            'shrink_high': None,  # Will be extracted from volatility_scaling defaults
+            'df': get_student_t_df(asset),
+            'sigma_cap_daily': get_sigma_cap_daily(asset),
+            'shrink_high': get_shrink_high(asset),
         }
         
         logger.log_prediction(

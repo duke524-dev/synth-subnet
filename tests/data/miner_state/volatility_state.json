@@ -2,32 +2,32 @@
   "BTC": {
     "asset": "BTC",
     "sigma2_1m": 5e-06,
-    "last_close_1m": 93016.53,
-    "last_update_ts": "2026-01-19T12:59:40.822286+00:00",
+    "last_close_1m": 92741.96,
+    "last_update_ts": "2026-01-19T07:54:04.625063+00:00",
     "lambda_val": 0.94,
     "state_version": 1
   },
   "ETH": {
     "asset": "ETH",
     "sigma2_1m": 8e-06,
-    "last_close_1m": 3223.34087697,
-    "last_update_ts": "2026-01-19T13:00:04.533486+00:00",
+    "last_close_1m": 3205.74999999,
+    "last_update_ts": "2026-01-19T07:54:12.743083+00:00",
     "lambda_val": 0.93,
     "state_version": 1
   },
   "XAU": {
     "asset": "XAU",
     "sigma2_1m": 2e-06,
-    "last_close_1m": 4673.077,
-    "last_update_ts": "2026-01-19T13:00:20.544371+00:00",
+    "last_close_1m": 4664.861,
+    "last_update_ts": "2026-01-19T07:54:23.587880+00:00",
     "lambda_val": 0.97,
     "state_version": 1
   },
   "SOL": {
     "asset": "SOL",
     "sigma2_1m": 1.2e-05,
-    "last_close_1m": 134.04750014,
-    "last_update_ts": "2026-01-19T13:00:32.933237+00:00",
+    "last_close_1m": 133.46650032,
+    "last_update_ts": "2026-01-19T07:54:29.955759+00:00",
     "lambda_val": 0.9,
     "state_version": 1
   }
