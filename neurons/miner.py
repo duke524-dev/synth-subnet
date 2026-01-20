@@ -87,16 +87,16 @@ class Miner(BaseMinerNeuron):
         bt.logging.info(
             f"Received prediction request from: {synapse.dendrite.hotkey} for timestamp: {simulation_input.start_time}"
         )
-        
-        # Use complete handler (Steps 1-11) - handles EWMA, path generation, validation, logging
-        response_tuple, error = await handle_request(synapse)
-        
-        if error:
-            bt.logging.error(f"Request failed: {error}")
-            synapse.simulation_output = None
-        else:
-            synapse.simulation_output = response_tuple
-        
+
+        synapse.simulation_output = generate_simulations(
+            asset=simulation_input.asset,
+            start_time=simulation_input.start_time,
+            time_increment=simulation_input.time_increment,
+            time_length=simulation_input.time_length,
+            num_simulations=simulation_input.num_simulations,
+            sigma=self.config.simulation.sigma,  # Standard deviation of the simulated price path
+        )
+
         return synapse
 
     async def blacklist(self, synapse: Simulation) -> typing.Tuple[bool, str]:
