@@ -143,7 +143,8 @@ class ParameterGovernance:
         last_tune = self.tuning_history.get(key)
         
         if last_tune:
-            return last_tune["value"]
+            # Use "new_value" as that's what propose_parameter_change saves
+            return last_tune.get("new_value")
         
         # Return default
         defaults = {

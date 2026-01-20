@@ -539,10 +539,36 @@ async def main_async():
             if batch_results and governance:
                 print(f"\n  Checking for parameter updates...")
                 
-                # Mock datetime.now() for governance checks
+                # Mock datetime for governance checks
                 # Since parameter_governance uses "from datetime import datetime",
-                # we need to patch datetime.now in that module
-                with patch('synth.miner.parameter_governance.datetime.now', return_value=current_end.replace(tzinfo=None)):
+                # we need to replace the datetime object in that module
+                import datetime as dt_module
+                from unittest.mock import Mock
+                import synth.miner.parameter_governance as governance_module
+                
+                # Create a mock datetime that preserves functionality but overrides now()
+                mock_datetime = Mock(spec=dt_module.datetime)
+                
+                # Override now() method to return simulated date
+                def mock_now(tz=None):
+                    return current_end.replace(tzinfo=None) if not tz else current_end
+                mock_datetime.now = mock_now
+                
+                # Preserve other needed methods
+                mock_datetime.fromisoformat = dt_module.datetime.fromisoformat
+                mock_datetime.replace = dt_module.datetime.replace
+                
+                # Make it callable to create datetime instances
+                def datetime_constructor(*args, **kwargs):
+                    return dt_module.datetime(*args, **kwargs)
+                mock_datetime.side_effect = datetime_constructor
+                mock_datetime.__call__ = datetime_constructor
+                
+                # Replace datetime in the governance module
+                original_datetime = governance_module.datetime
+                
+                try:
+                    governance_module.datetime = mock_datetime
                     parameter_changes = process_parameter_updates(
                         batch_results,
                         simulated_date=current_end,
@@ -554,6 +580,9 @@ async def main_async():
                         print(f"  ✅ Applied {len(parameter_changes)} parameter update(s)")
                     else:
                         print(f"  ℹ️  No parameter updates applied")
+                finally:
+                    # Restore original datetime
+                    governance_module.datetime = original_datetime
             
             # Move to next batch
             current_start = current_end

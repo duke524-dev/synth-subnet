@@ -84,15 +84,14 @@ def fetch_realized_prices(
     try:
         end_time_int = start_time_int + time_length
         
-        # OPTIMIZATION: Use grid resolution instead of 1-second resolution
-        # This fetches only the candles we need, not all 1-second data
-        # Pyth API minimum resolution is typically 60 seconds
-        resolution = max(time_increment, 60)
+        # Use 1-second resolution like validator to get fine-grained data
+        # This ensures we have data for all grid points and can interpolate missing values
+        resolution = 1  # Match validator's approach
         
-        # Prepare API request - fetch only at grid resolution
+        # Prepare API request - fetch at 1-second resolution
         params = {
             "symbol": PYTH_TOKEN_MAP[asset],
-            "resolution": resolution,  # Use grid resolution, not 1 second
+            "resolution": resolution,  # Use 1-second resolution like validator
             "from": start_time_int,
             "to": end_time_int,
         }
@@ -152,7 +151,7 @@ def _transform_pyth_data(
     """
     Transform Pyth API response to aligned price grid.
     
-    Similar to PriceDataProvider._transform_data but returns list of floats.
+    Similar to PriceDataProvider._transform_data but with forward-fill for missing values.
     
     Args:
         data: Pyth API response data
@@ -185,7 +184,7 @@ def _transform_pyth_data(
             return None
     
     # Create price dictionary from API response
-    # API returns candles at 'resolution' intervals
+    # With resolution=1, we have fine-grained data
     close_prices_dict = {t: c for t, c in zip(data["t"], data["c"])}
     
     # Align prices to exact grid
@@ -196,10 +195,10 @@ def _transform_pyth_data(
         if grid_t in close_prices_dict:
             aligned_prices[idx] = float(close_prices_dict[grid_t])
         else:
-            # Fallback: find closest candle within tolerance
+            # With 1-second resolution, find closest candle within tolerance
             # This handles cases where API timestamps don't exactly match grid
             # (e.g., due to API timing differences or missing data points)
-            tolerance = time_increment
+            tolerance = time_increment // 2  # Half of increment for better matching
             closest_t = min(
                 close_prices_dict.keys(),
                 key=lambda t: abs(t - grid_t),
@@ -207,6 +206,36 @@ def _transform_pyth_data(
             )
             if closest_t is not None and abs(closest_t - grid_t) <= tolerance:
                 aligned_prices[idx] = float(close_prices_dict[closest_t])
+    
+    # Forward-fill missing values using 1-second data
+    # This ensures we have prices for all grid points needed for longer intervals
+    if resolution == 1:
+        last_valid_price = None
+        for idx in range(len(aligned_prices)):
+            if not np.isnan(aligned_prices[idx]):
+                last_valid_price = aligned_prices[idx]
+            elif last_valid_price is not None:
+                # Forward-fill: use last known price
+                aligned_prices[idx] = last_valid_price
+        
+        # Backward-fill any remaining NaNs at the start
+        if np.isnan(aligned_prices[0]) and len(aligned_prices) > 1:
+            first_valid_idx = next(
+                (i for i, p in enumerate(aligned_prices) if not np.isnan(p)),
+                None
+            )
+            if first_valid_idx is not None:
+                first_valid_price = aligned_prices[first_valid_idx]
+                for idx in range(first_valid_idx):
+                    aligned_prices[idx] = first_valid_price
+    
+    # Check if we still have too many NaNs (more than 10% missing)
+    nan_count = sum(1 for p in aligned_prices if np.isnan(p))
+    if nan_count > len(aligned_prices) * 0.1:
+        bt.logging.warning(
+            f"Too many missing prices after interpolation: {nan_count}/{len(aligned_prices)} "
+            f"({nan_count/len(aligned_prices)*100:.1f}%)"
+        )
     
     return aligned_prices
 
