@@ -254,6 +254,7 @@ google-credentials.json
 #data log
 data/predictions
 #state log
-data/miner_state
+data/miner_state/*.json
 
 *.jsonl
+tests/*.json
